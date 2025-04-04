@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>용수 달리기</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            position: relative;
+        }
+        #title {
+            width: 400px;
+            margin-top: 10px;
+        }
+        #nickname-container {
+            margin-top: 10px;
+        }
+        #nickname-input {
+            width: 300px;
+            height: 40px;
+            font-size: 18px;
+            text-align: center;
+            border: 2px solid #000;
+            border-radius: 5px;
+            outline: none;
+        }
+        #start-button {
+            display: block;
+            width: 320px;
+            height: 50px;
+            margin: 10px auto;
+            font-size: 20px;
+            background-color: #ffcc00;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #countdown {
+            font-size: 50px;
+            font-weight: bold;
+            display: none;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background-color: white;
+        }
+        /* 리더보드 왼쪽 상단 고정 및 제목 "순위" */
+        #leaderboard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 220px;
+            background-color: #f9f9f9;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            text-align: left;
+            font-size: 16px;
+            display: none;
+        }
+        #leaderboard h2 {
+            margin-top: 0;
+            font-size: 18px;
+        }
+        #leaderboard ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #leaderboard li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 시작 화면 -->
+    <img id="title" src="yongsu-run-title.png" alt="용수 달리기">
+    <div id="nickname-container">
+        <input id="nickname-input" type="text" placeholder="별명을 입력하세요">
+        <button id="start-button">START</button>
+    </div>
+    <div id="countdown"></div>
+    
+    <!-- 게임 캔버스 -->
+    <canvas id="gameCanvas" width="800" height="400" style="display: none;"></canvas>
+    
+    <!-- 리더보드 (제목: 순위) -->
+    <div id="leaderboard">
+        <h2>순위</h2>
+        <ul id="leaderboard-list"></ul>
+    </div>
+    
+    <script type="module">
+        // Firebase 초기화 및 데이터 처리
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+    
+        const firebaseConfig = {
+            apiKey: "AIzaSyAVPD6hJVl4vqJac24cLzI-B3ToGLKinfI",
+            authDomain: "waterdragon-499c9.firebaseapp.com",
+            databaseURL: "https://waterdragon-499c9-default-rtdb.firebaseio.com",
+            projectId: "waterdragon-499c9",
+            storageBucket: "waterdragon-499c9.firebasestorage.app",
+            messagingSenderId: "756466741361",
+            appId: "1:756466741361:web:e8174d81a3bbfc253eebd0",
+            measurementId: "G-E03YM7D0WY"
+        };
+    
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+    
+        // 점수를 Firebase에 저장하는 함수
+        function saveScoreToFirebase(nickname, score) {
+            const leaderboardRef = ref(database, "leaderboard");
+            const newEntryRef = push(leaderboardRef);
+            set(newEntryRef, {
+                nickname: nickname,
+                score: score
+            });
+        }
+    
+        // 리더보드를 렌더링하는 함수
+        function renderLeaderboard() {
+            const leaderboardRef = ref(database, "leaderboard");
+            onValue(leaderboardRef, (snapshot) => {
+                const leaderboard = snapshot.val();
+                const leaderboardList = document.getElementById("leaderboard-list");
+                leaderboardList.innerHTML = "";
+    
+                if (leaderboard) {
+                    const sortedLeaderboard = Object.values(leaderboard)
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 10);
+                    sortedLeaderboard.forEach((entry, index) => {
+                        const li = document.createElement("li");
+                        li.textContent = `${index + 1}. ${entry.nickname} - ${entry.score}m`;
+                        leaderboardList.appendChild(li);
+                    });
+                }
+            });
+        }
+    
+        // 전역(window)에 할당하여 update 함수에서 호출 가능하게 함
+        window.saveScoreToFirebase = saveScoreToFirebase;
+        window.renderLeaderboard = renderLeaderboard;
+    
+        // 최초 리더보드 렌더링
+        renderLeaderboard();
+    </script>
+    
+    <script>
+        const startScreen = document.getElementById("nickname-container");
+        const countdownDisplay = document.getElementById("countdown");
+        const gameCanvas = document.getElementById("gameCanvas");
+        const leaderboard = document.getElementById("leaderboard");
+        const ctx = gameCanvas.getContext("2d");
+    
+        const nicknameInput = document.getElementById("nickname-input");
+        const startButton = document.getElementById("start-button");
+    
+        startButton.addEventListener("click", startCountdown);
+        nicknameInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") startCountdown();
+        });
+    
+        function startCountdown() {
+            let nickname = nicknameInput.value.trim();
+            if (nickname === "") {
+                alert("별명을 입력해주세요!");
+                return;
+            }
+            startScreen.style.display = "none";
+            countdownDisplay.style.display = "block";
+            let count = 3;
+            countdownDisplay.innerText = count;
+            let interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownDisplay.innerText = count;
+                } else {
+                    countdownDisplay.innerText = "GO!";
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        countdownDisplay.style.display = "none";
+                        gameCanvas.style.display = "block";
+                        leaderboard.style.display = "block";
+                        startGame(nickname);
+                    }, 1000);
+                }
+            }, 1000);
+        }
+    
+        function startGame(nickname) {
+            const yongsuImages = [new Image(), new Image()];
+            yongsuImages[0].src = "yongsu-run1.png";
+            yongsuImages[1].src = "yongsu-run2.png";
+    
+            const obstacleImage = new Image();
+            obstacleImage.src = "obstacle.png";
+    
+            let yongsu = {
+                x: 50,
+                y: 200,
+                width: 70,
+                height: 100,
+                velocityY: 0,
+                gravity: 0.6,
+                jumpPower: -13,
+                isJumping: false,
+                animationFrame: 0
+            };
+    
+            let obstacles = [];
+            let score = 0;
+            let gameOver = false;
+            let frameCounter = 0;
+            let obstacleSpeed = 8;
+            const maxSpeed = 15;
+    
+            function resetGame() {
+                yongsu.y = 200;
+                yongsu.velocityY = 0;
+                yongsu.isJumping = false;
+                obstacles = [];
+                score = 0;
+                gameOver = false;
+                frameCounter = 0;
+                obstacleSpeed = 8;
+                update();
+            }
+    
+            function drawYongsu() {
+                ctx.drawImage(yongsuImages[yongsu.animationFrame], yongsu.x, yongsu.y, yongsu.width, yongsu.height);
+            }
+    
+            function drawObstacles() {
+                obstacles.forEach(obstacle => {
+                    ctx.drawImage(obstacleImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                });
+            }
+    
+            function drawGround() {
+                ctx.beginPath();
+                ctx.moveTo(0, 300);
+                ctx.lineTo(gameCanvas.width, 300);
+                ctx.strokeStyle = "black";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+    
+            function updateObstacles() {
+                const spawnInterval = Math.max(50, Math.floor(150 / obstacleSpeed));
+                if (frameCounter % spawnInterval === 0) {
+                    const pattern = Math.floor(Math.random() * 3);
+                    if (pattern === 0) {
+                        obstacles.push({ x: gameCanvas.width, y: 220, width: 80, height: 80 });
+                    } else if (pattern === 1) {
+                        obstacles.push({ x: gameCanvas.width, y: 230, width: 70, height: 70 });
+                        obstacles.push({ x: gameCanvas.width + 70, y: 230, width: 70, height: 70 });
+                    } else if (pattern === 2) {
+                        obstacles.push({ x: gameCanvas.width, y: 240, width: 60, height: 60 });
+                        obstacles.push({ x: gameCanvas.width + 60, y: 240, width: 60, height: 60 });
+                        obstacles.push({ x: gameCanvas.width + 120, y: 240, width: 60, height: 60 });
+                    }
+                }
+                obstacles.forEach(obstacle => {
+                    obstacle.x -= obstacleSpeed;
+                });
+                obstacles = obstacles.filter(obstacle => obstacle.x + obstacle.width > 0);
+            }
+    
+            function checkCollision() {
+                for (let obstacle of obstacles) {
+                    const yHitbox = {
+                        x: yongsu.x + yongsu.width * 0.2,
+                        y: yongsu.y + yongsu.height * 0.2,
+                        width: yongsu.width * 0.6,
+                        height: yongsu.height * 0.6
+                    };
+                    const oHitbox = {
+                        x: obstacle.x + obstacle.width * 0.1,
+                        y: obstacle.y + obstacle.height * 0.1,
+                        width: obstacle.width * 0.8,
+                        height: obstacle.height * 0.8
+                    };
+                    if (
+                        yHitbox.x < oHitbox.x + oHitbox.width &&
+                        yHitbox.x + yHitbox.width > oHitbox.x &&
+                        yHitbox.y < oHitbox.y + oHitbox.height &&
+                        yHitbox.y + yHitbox.height > oHitbox.y
+                    ) {
+                        gameOver = true;
+                    }
+                }
+            }
+    
+            function update() {
+                checkCollision();
+                if (gameOver) {
+                    saveScoreToFirebase(nickname, score); // 게임 종료 시 점수 저장
+                    renderLeaderboard(); // 리더보드 업데이트
+                    ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+                    ctx.font = "bold 30px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText("게임 오버!", gameCanvas.width / 2, gameCanvas.height / 2 - 50);
+                    ctx.font = "20px Arial";
+                    ctx.fillText("스페이스바 또는 클릭으로 재시작", gameCanvas.width / 2, gameCanvas.height / 2 - 10);
+                    return;
+                }
+                ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+                drawGround();
+                yongsu.velocityY += yongsu.gravity;
+                yongsu.y += yongsu.velocityY;
+                if (yongsu.y >= 200) {
+                    yongsu.y = 200;
+                    yongsu.isJumping = false;
+                }
+                if (yongsu.y < 0) {
+                    yongsu.y = 0;
+                    yongsu.velocityY = 0;
+                }
+                frameCounter++;
+                if (frameCounter % 10 === 0) {
+                    yongsu.animationFrame = (yongsu.animationFrame + 1) % 2;
+                }
+                if (frameCounter % 200 === 0 && obstacleSpeed < maxSpeed) {
+                    obstacleSpeed += 0.5;
+                }
+                updateObstacles();
+                if (frameCounter % 5 === 0) {
+                    score++;
+                }
+                drawYongsu();
+                drawObstacles();
+                ctx.font = "bold 20px Arial";
+                ctx.textAlign = "right";
+                ctx.fillText(score + "m", gameCanvas.width - 10, 30);
+                requestAnimationFrame(update);
+            }
+    
+            document.addEventListener("keydown", (event) => {
+                if (event.code === "Space" || event.code === "ArrowUp") {
+                    event.preventDefault();
+                }
+                if (gameOver && (event.code === "Space" || event.code === "ArrowUp")) {
+                    resetGame();
+                } else if (!gameOver && (event.code === "Space" || event.code === "ArrowUp") && !yongsu.isJumping) {
+                    yongsu.velocityY = yongsu.jumpPower;
+                    yongsu.isJumping = true;
+                }
+            });
+    
+            gameCanvas.addEventListener("click", () => {
+                if (gameOver) resetGame();
+            });
+            update();
+        }
+    </script>
+</body>
+</html>
