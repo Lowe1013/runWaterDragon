@@ -76,6 +76,19 @@
         #leaderboard li {
             margin: 5px 0;
         }
+        /* 게임 오른쪽에 "돌아가기" 버튼 추가 */
+        #back-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #ccc;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -95,6 +108,9 @@
         <h2>순위</h2>
         <ul id="leaderboard-list"></ul>
     </div>
+    
+    <!-- 돌아가기 버튼 -->
+    <button id="back-button">돌아가기</button>
     
     <script type="module">
         // Firebase 초기화 및 데이터 처리
@@ -160,9 +176,15 @@
         const gameCanvas = document.getElementById("gameCanvas");
         const leaderboard = document.getElementById("leaderboard");
         const ctx = gameCanvas.getContext("2d");
+        const backButton = document.getElementById("back-button");
     
         const nicknameInput = document.getElementById("nickname-input");
         const startButton = document.getElementById("start-button");
+    
+        // 돌아가기 버튼 클릭 시 지정 URL로 이동
+        backButton.addEventListener("click", function () {
+            window.location.href = "https://lowe1013.github.io/WaterDragon/";
+        });
     
         startButton.addEventListener("click", startCountdown);
         nicknameInput.addEventListener("keydown", (event) => {
@@ -190,6 +212,8 @@
                         countdownDisplay.style.display = "none";
                         gameCanvas.style.display = "block";
                         leaderboard.style.display = "block";
+                        // 게임 화면 시작 시 돌아가기 버튼도 표시
+                        backButton.style.display = "block";
                         startGame(nickname);
                     }, 1000);
                 }
